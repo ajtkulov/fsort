@@ -14,7 +14,7 @@ struct Opts {
     #[clap(short, long)]
     input: String,
     #[clap(short, long)]
-    output: String
+    output: String,
 }
 
 fn main() {
@@ -53,7 +53,7 @@ fn main() {
                     }
                 };
 
-                if size > 5000000 {
+                if size > (1 << 32) {
                     vec.sort();
                     writeToFile(format!("{}_{}.tmp", input_file, file_idx), vec.to_vec());
                     size = 0;
@@ -70,52 +70,56 @@ fn main() {
             }
         }
 
-        let mut open_files: Vec<BufReader<File>> = Vec::new();
-        let mut done_states: Vec<bool> = Vec::new();
-        let mut counts: Vec<i32> = Vec::new();
+        if file_idx == 0 {
+            fs::rename(format!("{}_{}.tmp", input_file, 0), output_file);
+        } else {
+            let mut open_files: Vec<BufReader<File>> = Vec::new();
+            let mut done_states: Vec<bool> = Vec::new();
+            let mut counts: Vec<i32> = Vec::new();
 
-        let mut heap: BinaryHeap<Reverse<(String, usize)>> = BinaryHeap::new();
+            let mut heap: BinaryHeap<Reverse<(String, usize)>> = BinaryHeap::new();
 
-        for idx in 0..file_idx + 1 {
-            let fileName = format!("{}_{}.tmp", input_file, idx);
-            let file = File::open(&fileName)?;
-            open_files.push(BufReader::new(file));
-            done_states.push(false);
-            counts.push(0);
-        }
-
-        for idx in 0..file_idx + 1 {
-            read(&mut counts, &mut open_files, &mut done_states, &mut heap, idx);
-        }
-
-        let mut ff = File::create(output_file)?;
-
-        read(&mut counts, &mut open_files, &mut done_states, &mut heap, 0);
-
-        loop {
-            if heap.is_empty() {
-                break;
+            for idx in 0..file_idx + 1 {
+                let file_name = format!("{}_{}.tmp", input_file, idx);
+                let file = File::open(&file_name)?;
+                open_files.push(BufReader::new(file));
+                done_states.push(false);
+                counts.push(0);
             }
 
-            match heap.pop() {
-                None => {
+            for idx in 0..file_idx + 1 {
+                read(&mut counts, &mut open_files, &mut done_states, &mut heap, idx);
+            }
+
+            let mut ff = File::create(output_file)?;
+
+            read(&mut counts, &mut open_files, &mut done_states, &mut heap, 0);
+
+            loop {
+                if heap.is_empty() {
                     break;
                 }
-                Some(q1) => {
-                    let q = q1.0;
-                    ff.write(q.0.as_bytes());
-                    counts[q.1] = counts[q.1] - 1;
-                    if counts[q.1] == 0 {
-                        read(&mut counts, &mut open_files, &mut done_states, &mut heap, q.1);
+
+                match heap.pop() {
+                    None => {
+                        break;
+                    }
+                    Some(q1) => {
+                        let q = q1.0;
+                        ff.write(q.0.as_bytes());
+                        counts[q.1] = counts[q.1] - 1;
+                        if counts[q.1] == 0 {
+                            read(&mut counts, &mut open_files, &mut done_states, &mut heap, q.1);
+                        }
                     }
                 }
             }
-        }
 
-        for idx in 0..file_idx + 1 {
-            let file_name = format!("{}_{}.tmp", input_file, idx);
+            for idx in 0..file_idx + 1 {
+                let file_name = format!("{}_{}.tmp", input_file, idx);
 
-            fs::remove_file(file_name)?;
+                fs::remove_file(file_name)?;
+            }
         }
 
         Ok(())
