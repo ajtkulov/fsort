@@ -6,6 +6,9 @@ use std::collections::BinaryHeap;
 use std::cmp::Reverse;
 use std::fs;
 use clap::{AppSettings, Clap};
+use std::cmp;
+use std::thread;
+use std::thread::JoinHandle;
 
 #[derive(Clap)]
 #[clap(version = "1.0", author = "Pavel Ajtkulov")]
@@ -32,7 +35,11 @@ fn main() {
         let mut file_idx: usize = 0;
         let mut done: bool = false;
 
-        let mut vec: Vec<String> = Vec::new();
+        let threshold = cmp::max((fs::metadata(input_file)?.len() / 100) as usize, 1 << 26);
+
+        let mut vecc: Vec<Vec<String>> = Vec::new();
+        let mut spawn: Vec<JoinHandle<()>> = Vec::new();
+        vecc.push(Vec::new());
 
         loop {
             loop {
@@ -44,7 +51,7 @@ fn main() {
                         }
 
                         size = size + line.len();
-                        vec.push(line.to_string());
+                        vecc[file_idx].push(line.to_string());
 
                         line.clear();
                     }
@@ -53,21 +60,36 @@ fn main() {
                     }
                 };
 
-                if size > (1 << 32) {
-                    vec.sort();
-                    writeToFile(format!("{}_{}.tmp", input_file, file_idx), vec.to_vec());
+                if size > threshold {
+                    vecc.push(Vec::new());
+                    let tmp_file_name = format!("{}_{}.tmp", input_file, file_idx);
+                    let mut inner_vec = vecc[file_idx].to_vec();
+                    spawn.push(thread::spawn(move || {
+                        inner_vec.sort();
+                        write_to_file(tmp_file_name, &mut inner_vec.to_vec());
+                        inner_vec.clear();
+                    }));
                     size = 0;
                     file_idx = file_idx + 1;
-                    vec.clear();
                     break;
                 }
             }
 
             if done {
-                vec.sort();
-                writeToFile(format!("{}_{}.tmp", input_file, file_idx).to_string(), vec.to_vec());
+                let mut inner_vec = vecc[file_idx].to_vec();
+                let tmp_file_name = format!("{}_{}.tmp", input_file, file_idx);
+
+                spawn.push(thread::spawn(move || {
+                    inner_vec.sort();
+                    write_to_file(tmp_file_name, &mut inner_vec.to_vec());
+                }));
+
                 break;
             }
+        }
+
+        for h in spawn {
+            h.join();
         }
 
         if file_idx == 0 {
@@ -142,7 +164,7 @@ fn read(counts: &mut Vec<i32>, files: &mut Vec<BufReader<File>>, done_states: &m
                     heap.push(Reverse(pair));
                     counts[idx] = counts[idx] + 1;
 
-                    if counts[idx] > 100 {
+                    if counts[idx] > 5000 {
                         break;
                     }
                     line.clear();
@@ -155,10 +177,10 @@ fn read(counts: &mut Vec<i32>, files: &mut Vec<BufReader<File>>, done_states: &m
     }
 }
 
-fn writeToFile(file_name: String, vec: Vec<String>) -> Result<(), std::io::Error> {
+fn write_to_file(file_name: String, vec: &mut Vec<String>) -> Result<(), std::io::Error> {
     let mut ff = File::create(file_name)?;
 
-    for l in &vec {
+    for l in vec {
         ff.write(l.as_bytes());
     }
 
