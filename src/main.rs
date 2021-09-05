@@ -1,6 +1,6 @@
 use std::fs::File;
-use std::io::{BufRead, Write};
-use std::io::BufReader;
+use std::io::{BufReader, Read, BufRead};
+use std::io::{BufWriter, Write};
 use std::vec::Vec;
 use std::collections::BinaryHeap;
 use std::cmp::Reverse;
@@ -69,6 +69,8 @@ fn main() {
                         write_to_file(tmp_file_name, &mut inner_vec.to_vec());
                         inner_vec.clear();
                     }));
+
+                    vecc[file_idx].clear();
                     size = 0;
                     file_idx = file_idx + 1;
                     break;
@@ -114,8 +116,11 @@ fn main() {
             }
 
             let mut ff = File::create(output_file)?;
+            let mut fff = BufWriter::new(ff);
 
             read(&mut counts, &mut open_files, &mut done_states, &mut heap, 0);
+
+            let mut output_buffer: Vec<String> = Vec::new();
 
             loop {
                 if heap.is_empty() {
@@ -128,7 +133,16 @@ fn main() {
                     }
                     Some(q1) => {
                         let q = q1.0;
-                        ff.write(q.0.as_bytes());
+                        // ff.write(q.0.as_bytes());
+                        output_buffer.push(q.0);
+
+                        if output_buffer.len() > 10000 {
+                            for line_to_write in &output_buffer {
+                                fff.write(line_to_write.as_bytes());
+                            }
+                            output_buffer.clear();
+                        }
+
                         counts[q.1] = counts[q.1] - 1;
                         if counts[q.1] == 0 {
                             read(&mut counts, &mut open_files, &mut done_states, &mut heap, q.1);
@@ -136,6 +150,11 @@ fn main() {
                     }
                 }
             }
+
+            for line_to_write in &output_buffer {
+                fff.write(line_to_write.as_bytes());
+            }
+            output_buffer.clear();
 
             for idx in 0..file_idx + 1 {
                 let file_name = format!("{}_{}.tmp", input_file, idx);
@@ -179,9 +198,10 @@ fn read(counts: &mut Vec<i32>, files: &mut Vec<BufReader<File>>, done_states: &m
 
 fn write_to_file(file_name: String, vec: &mut Vec<String>) -> Result<(), std::io::Error> {
     let mut ff = File::create(file_name)?;
+    let mut fff = BufWriter::new(ff);
 
     for l in vec {
-        ff.write(l.as_bytes());
+        fff.write(l.as_bytes());
     }
 
     Ok(())
